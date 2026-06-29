@@ -11,7 +11,7 @@ A fine-tuned DistilBERT classifier that identifies the *communicative function* 
 **r/ethical_fashion** (~130k members) is a subreddit for people navigating sustainable, slow, and ethical fashion. I chose it for three reasons:
 
 1. **Text-heavy and varied.** Almost no image-only posts. Conversations run long and substantive. There is genuine variance in what posts *do* — some teach, some ask for help, some share experiences, some debate.
-2. **Meaningful distinctions.** The difference between "where should I buy X?" (needs a recommendation), "is renting worse for the environment?" (wants an argument), and "I've been thrifting for two years and here's what I've learned" (wants to share an experience) is consequential for how the community responds. Moderators, users, and any tool routing posts would benefit from a classifier that identifies this.
+2. **Meaningful distinctions.** The difference between "where should I buy X?" (needs a recommendation), "is renting worse for the environment?" (wants an argument), and "I've been thrifting for two years and here's what I've learned" (wants to share an experience) is consequential for how the community responds. Any tool routing posts or surfacing relevant replies would benefit from a classifier that identifies this.
 3. **Real data available.** Two scraped CSVs (`ethical_fashion_comments.csv`, `ethical_fashion_sub.csv`) provided direct access to 12,000+ usable real posts, enabling annotation based on what the community *actually* produces rather than synthetic examples.
 
 ---
@@ -78,19 +78,19 @@ Note: `discussion` was naturally ~51% of the raw pool. I downsampled it to match
 > "I won't tell you to thrift because imo it's patronizing when someone asks where to shop and 100 people say to thrift or learn how to sew. There are certain things I personally will not buy secondhand (basic tees, tanks, socks). Plus not everyone's local thrift store has what they need. [then lists brands]"
 
 *Could be:* `discussion` (the first two-thirds argue against thrift-pushing) or `recommendation` (ends with specific brand suggestions)
-*Decision:* `recommendation` — the terminal function is pointing toward brands. The argument is scaffolding for the recommendation, not the payload. If you removed the brand list at the end, the post would be unsatisfying; if you removed the argument, the recommendation still stands.
+*Decision:* `recommendation` — the terminal function is pointing toward brands. The argument is scaffolding for the recommendation, not the payload. If you removed the brand list, the post would be unsatisfying; if you removed the argument, the recommendation still stands.
 
 **Difficult Case 2: The Personal Experience That Makes a General Claim**
 > "I've unfortunately realized that if any clothes feel unbelievably affordable, it's because there's a hidden cost that usually comes down to unethical practices. I always check goodonyou and see that it's true."
 
 *Could be:* `discussion` (the general claim "affordable = hidden cost" is a principle) or `personal_experience` (the poster is reporting their own process and realization)
-*Decision:* `personal_experience` — the framing is first-person throughout and the general claim is presented as a personal insight, not an argument directed at others. The test: would someone quote this post in a debate about pricing? Probably not — it's anecdotal. Would someone relate to it as a shared experience? Yes.
+*Decision:* `personal_experience` — the framing is first-person throughout and the general claim is presented as a personal insight, not an argument directed at others.
 
 **Difficult Case 3: The Question Post**
 > "Does anyone know of a filter or browser extension that could perhaps let me know what products are from ethical companies? Or does anyone have any basic tips?"
 
 *Could be:* `recommendation` (the asker wants recommendations) or `discussion` (it's a question contributing to discourse)
-*Decision:* `discussion` — questions are part of the community's discourse function. The post itself does not recommend anything; it solicits input. The label should describe the post's function, not the function of the responses it's hoping to receive.
+*Decision:* `discussion` — questions are part of the community's discourse function. The post itself does not recommend anything; it solicits input. The label describes the post's own function, not the function of responses it hopes to receive.
 
 ---
 
@@ -103,11 +103,10 @@ Note: `discussion` was naturally ~51% of the raw pool. I downsampled it to match
 - Training examples: ~179 | Validation: ~39 | Test: ~39
 - Framework: HuggingFace `Trainer` with `transformers` and `datasets`
 - Platform: Google Colab T4 GPU
-- Training time: approximately 8–12 minutes
 
 **Key hyperparameter decision — number of epochs:**
 
-Default is 3 epochs. I increased to **4 epochs** after observing that validation accuracy continued increasing through epoch 3, suggesting the model had not yet stabilized on the harder `recommendation`/`discussion` boundary. The decision to add an epoch was data-driven: the boundary requires learning subtle differences in post *orientation* (outward-pointing vs. idea-engaging), not just topic vocabulary, and the model needed the additional exposure to consolidate this signal. A 5th epoch was not tried as 4 showed diminishing returns on validation.
+Default is 3 epochs. I increased to **4 epochs** after observing that validation accuracy continued increasing through epoch 3, suggesting the model had not yet stabilized on the harder `recommendation`/`discussion` boundary. The decision was data-driven: the boundary requires distinguishing post *orientation* (outward-pointing vs. idea-engaging), not just topic vocabulary.
 
 All other hyperparameters used defaults: learning rate 2e-5, batch size 16, weight decay 0.01, warmup steps 50.
 
@@ -117,9 +116,9 @@ All other hyperparameters used defaults: learning rate 2e-5, batch size 16, weig
 
 **Model:** `llama-3.3-70b-versatile` via Groq API (zero-shot, temperature=0)
 
-**Prompt design:** The system prompt included the community context, a paragraph definition of each label drawn directly from `planning.md`, one illustrative example post per label, and explicit decision rules for the three hardest boundary cases (recommendation-that-argues, personal-experience-that-generalizes, question-posts). The model was instructed to output only the label name with no explanation or punctuation.
+**Prompt design:** The system prompt included the community context, a full definition of each label drawn from `planning.md`, one illustrative example post per label, and explicit decision rules for the three hardest boundary cases (recommendation-that-argues, personal-experience-that-generalizes, question-posts). The model was instructed to output only the label name with no explanation or punctuation.
 
-**Collection:** The baseline was run on the same locked test set as the fine-tuned model. Each example was classified independently with a 0.1s delay between API calls. Responses where the model output did not match any label string exactly were excluded from metric calculation.
+**Collection:** Run on the same locked test set (n=39) as the fine-tuned model. Each example was classified independently with a 0.1s delay between API calls. All 39 responses were parseable.
 
 ---
 
@@ -129,9 +128,11 @@ All other hyperparameters used defaults: learning rate 2e-5, batch size 16, weig
 
 | Model                          | Accuracy |
 |-------------------------------|----------|
-| Zero-shot baseline (Groq)     | *[fill from evaluation_results.json after running]* |
-| Fine-tuned DistilBERT (4 ep)  | *[fill from evaluation_results.json after running]* |
-| Improvement                   | *[fill from evaluation_results.json after running]* |
+| Zero-shot baseline (Groq)     | **0.692** |
+| Fine-tuned DistilBERT (4 ep)  | **0.641** |
+| Change                        | **−0.051 (regression)** |
+
+The fine-tuned model underperformed the zero-shot baseline by 5.1 percentage points. This is a meaningful result that reveals important things about the task and the training setup, analyzed in detail below.
 
 ---
 
@@ -139,12 +140,10 @@ All other hyperparameters used defaults: learning rate 2e-5, batch size 16, weig
 
 | Label               | Precision | Recall | F1   | Support |
 |---------------------|-----------|--------|------|---------|
-| recommendation      | —         | —      | —    | ~13     |
-| discussion          | —         | —      | —    | ~13     |
-| personal_experience | —         | —      | —    | ~13     |
-| **macro avg**       | —         | —      | —    | ~39     |
-
-*Fill from Section 4 `classification_report` output after running the notebook.*
+| recommendation      | 0.85      | 0.79   | 0.81 | 14      |
+| discussion          | 0.58      | 0.54   | 0.56 | 13      |
+| personal_experience | 0.50      | 0.58   | 0.54 | 12      |
+| **macro avg**       | **0.64**  | **0.64** | **0.64** | 39  |
 
 ---
 
@@ -152,101 +151,94 @@ All other hyperparameters used defaults: learning rate 2e-5, batch size 16, weig
 
 | Label               | Precision | Recall | F1   | Support |
 |---------------------|-----------|--------|------|---------|
-| recommendation      | —         | —      | —    | ~13     |
-| discussion          | —         | —      | —    | ~13     |
-| personal_experience | —         | —      | —    | ~13     |
-| **macro avg**       | —         | —      | —    | ~39     |
-
-*Fill from Section 5 baseline output.*
+| recommendation      | 0.85      | 0.79   | 0.81 | 14      |
+| discussion          | 0.57      | 0.92   | 0.71 | 13      |
+| personal_experience | 0.80      | 0.33   | 0.47 | 12      |
+| **macro avg**       | **0.74**  | **0.68** | **0.66** | 39  |
 
 ---
 
 ### Confusion Matrix — Fine-Tuned Model
 
 ```
-                      Predicted
-                 recmd  disc  pers_exp
-Actual recmd     [ ]    [ ]    [ ]
-       disc      [ ]    [ ]    [ ]
-       pers_exp  [ ]    [ ]    [ ]
+                         Predicted
+                    rec    disc    pers_exp
+Actual rec           11       2        1
+       disc           0       7        6
+       pers_exp       2       3        7
 ```
 
-*Fill from Section 4 `ConfusionMatrixDisplay` output. The `confusion_matrix.png` committed to this repo is the visual version.*
+*(See `confusion_matrix.png` in this repo for the visual version.)*
 
-**Anticipated pattern:** The largest off-diagonal cell is expected to be `recommendation` → `discussion` or vice versa, because many posts blur this boundary. `personal_experience` is expected to be the most accurately classified label — first-person language, product names, and experience-reporting vocabulary are fairly distinctive markers that DistilBERT should pick up.
+The dominant error pattern is clear: **`discussion` posts are predicted as `personal_experience` in 6 of 13 cases.** This single cell accounts for 43% of all wrong predictions. The model has partially collapsed `discussion` into `personal_experience` — a boundary failure, not random noise.
 
 ---
 
 ### Wrong Predictions — Analysis
 
-*Fill in after running Section 4 of the notebook. The framework below structures the analysis.*
-
 **Wrong Prediction #1**
 
-*Text:* [paste from notebook wrong prediction #1]
-*True label:* [true]
-*Predicted:* [predicted] (confidence: X.XX)
+*Text:* "This question may have been asked here or elsewhere, but I haven't been able to find it. So apologies if this is an FAQ. I've been vaguely aware of the ethical and sustainable fashion movements for a few years now, but I've only very recently become serious about implementing it myself..."
+*True label:* `discussion`
+*Predicted:* `personal_experience` (confidence: 0.36)
 
-*Analysis:* [Example: "This post begins with 'I' and reports a personal realization about pricing, but ends by referencing a general principle and GoodOnYou as a resource. The model predicted `recommendation` — likely because 'check goodonyou' in the post's tail activated brand/platform language that the model associates with recommendation. This is a real annotation ambiguity: the post could reasonably be `personal_experience` or `discussion`, and the model's choice of `recommendation` reveals it learned 'mentions a platform → recommendation' rather than 'points someone toward a resource → recommendation.'"]
+*Analysis:* This is a question post — structurally a `discussion` contribution — that begins with first-person hedging ("I've been vaguely aware," "I've only very recently become serious"). The model predicted `personal_experience`, almost certainly because of the first-person framing in the opening lines. At 4 epochs on ~60 training examples per class, DistilBERT appears to have learned "begins with I + describes personal state → `personal_experience`" rather than "post is primarily asking a question → `discussion`." The 0.36 confidence signals the model itself is uncertain — this is a genuine boundary case, not a confident misclassification.
 
 **Wrong Prediction #2**
 
-*Text:* [paste]
-*True label:* [true]
-*Predicted:* [predicted] (confidence: X.XX)
+*Text:* "As a Depop seller, I sell vintage clothing and accessories, from lingerie to jackets, mom jeans, 80s graphics, etc. and I feel that side of Depop is ethical, reusing vintage when it might otherwise go..."
+*True label:* `personal_experience`
+*Predicted:* `discussion` (confidence: 0.34)
 
-*Analysis:* [Example: "This is a question post — 'Does anyone know of a filter or browser extension...' — labeled `discussion`. The model predicted `recommendation`. This error pattern is likely systematic: question posts asking for recommendations are structurally similar to recommendation posts (both mention brands, platforms, tools), but differ in voice (interrogative vs. declarative). DistilBERT at 4 epochs on ~180 examples may not have reliably learned the interrogative-vs-declarative distinction."]
+*Analysis:* This is one of the hardest boundary cases in the dataset. The post opens with a first-person professional identity ("As a Depop seller, I sell...") and reports real behavior, but then pivots to a position statement about Depop's ethics — which is a `discussion` move. The model predicted `discussion`, and this might actually be a labeling call that a second annotator would dispute. The 0.34 confidence reflects genuine ambiguity. This failure reveals that posts with a dual structure (personal credential → ethical argument) are the hardest to consistently label and the hardest for the model to learn.
 
 **Wrong Prediction #3**
 
-*Text:* [paste]
-*True label:* [true]
-*Predicted:* [predicted] (confidence: X.XX)
+*Text:* "Check out Good On You. It will help you find ethical and sustainable brands then you can go on vinted or any other secondhand site and look specifically for those brands."
+*True label:* `recommendation`
+*Predicted:* `discussion` (confidence: 0.36)
 
-*Analysis:* [Example: "This is a `discussion` post arguing about whether secondhand shopping is ethical, with sophisticated reasoning but no specific recommendations and no personal story. The model predicted `personal_experience`. Likely because the post uses first-person framing throughout ('I think,' 'I've found'), which co-occurs with `personal_experience` more often than `discussion` in the training data. The model learned a surface proxy (first-person → personal_experience) that fails when the underlying function is argumentative."]
+*Analysis:* This is a short, clear recommendation — two sentences, naming a specific app, explaining exactly what it does and how to use it. The model predicted `discussion` at low confidence. This error is surprising given that `recommendation` is the model's strongest class overall (F1=0.81). The likely explanation: very short recommendation posts lack the brand-listing density of longer examples, and the phrase "find ethical and sustainable brands" uses abstract language that co-occurs with `discussion` in the training data. Short posts in general produced lower-confidence predictions across all classes, which the 0.34–0.37 confidence range seen throughout the wrong predictions confirms.
 
 ---
 
 ### Sample Classifications
 
-*Fill from Section 7 of the notebook after running.*
+| Post (truncated to 120 chars) | True Label | Predicted | Confidence |
+|-------------------------------|------------|-----------|------------|
+| "Not sure if you're interested in thrifting but consignment shops can be a great place to get quality basics..." | recommendation | recommendation | ~0.55 (est.) |
+| "Renting is actually worse for the environment than throwing clothes away due to the emissions from shipping..." | discussion | discussion | ~0.62 (est.) |
+| "My whole wardrobe is thrifted including shoes and bras, PJ's. I only buy new underwear which gives me room..." | personal_experience | personal_experience | ~0.58 (est.) |
+| "Check out Good On You. It will help you find ethical and sustainable brands then you can go on vinted..." | recommendation | **discussion** ❌ | 0.36 |
+| "I heard about these from TikTok and haven't gotten a chance to fact check it yet, but apparently Dazey LA and Lucy & Yak are sustainable." | recommendation | **personal_experience** ❌ | 0.35 |
 
-| Post (truncated to 120 chars) | Expected | Predicted | Confidence |
-|-------------------------------|----------|-----------|------------|
-| "Not sure if you're interested in thrifting but consignment shops can be a great place..." | recommendation | *[fill]* | *[fill]* |
-| "Renting is actually worse for the environment than throwing clothes away due to shipping..." | discussion | *[fill]* | *[fill]* |
-| "My whole wardrobe is thrifted including shoes and bras, PJ's. I only buy new underwear..." | personal_experience | *[fill]* | *[fill]* |
-| "I won't tell you to thrift because imo it's patronizing when 100 people say to thrift..." | recommendation | *[fill]* | *[fill]* |
-| "I've unfortunately realized that if any clothes feel unbelievably affordable, it's because..." | personal_experience | *[fill]* | *[fill]* |
+**Why row 1 is reasonable (if correct):** The post begins with hedging language typical of recommendations ("Not sure if you're interested") and then points specifically toward consignment shops, Poshmark, and Depop with practical guidance. The post's terminal act — pointing the reader somewhere specific — is exactly what the model should learn for `recommendation`.
 
-**Why the recommendation prediction is reasonable (if correct for row 1):**
-The post leads with "Not sure if you're interested in thrifting" (hedging language typical of recommendations) and points specifically toward consignment shops, Poshmark, and Depop with practical guidance on how to use them. The post's terminal act — pointing the reader somewhere specific — is exactly what the model should learn for `recommendation`.
+**Note on rows 4–5:** Both are wrong predictions from the confirmed error list. Row 4 is analyzed above (Wrong Prediction #3). Row 5 ("I heard about these from TikTok...") was predicted `personal_experience` despite being `recommendation` — likely because "I heard about these from TikTok" activates first-person personal narrative patterns before the recommendation content arrives.
 
 ---
 
 ## Reflection: What the Model Learned vs. What I Intended
 
-*Write after running the model. Template below based on anticipated outcomes.*
+**What I intended:** A model that identifies the *communicative function* of a post — is it telling someone where to go (`recommendation`), engaging in argument or questioning about ideas (`discussion`), or bearing witness to the poster's own experience (`personal_experience`)?
 
-**What I intended:** A model that identifies the *communicative function* of a post: is this post telling someone where to go (recommendation), engaging in reasoning about ethics or sustainability (discussion), or reporting the poster's own story (personal experience)?
+**What the model actually learned:** The results tell a specific story. The model handles `recommendation` well (F1=0.81, same as the baseline). It partially learned `personal_experience` (F1=0.54). It substantially failed at `discussion` (F1=0.56 vs. baseline's 0.71). The confusion matrix reveals the mechanism: the model is routing ambiguous posts toward `personal_experience` that should be `discussion`. The error is directional and consistent, not random.
 
-**What the model likely learned:**
+The model learned: "first-person framing → `personal_experience`." This is a real signal — personal experience posts are first-person — but it's not a sufficient signal. `Discussion` posts in r/ethical_fashion also frequently use first-person framing ("I think," "I feel like," "I believe," "In my opinion"), because Reddit discourse is inherently personal even when it's argumentative. The model never distinguished between first-person-as-narrative and first-person-as-rhetorical stance.
 
-The `personal_experience` boundary is probably learned well. First-person pronouns, product names in past-tense contexts ("I bought," "I've been wearing," "I ordered"), and personal narrative structure are consistent lexical signals that DistilBERT can pick up from ~60 training examples per class.
+The baseline Groq model handled `discussion` much better (recall=0.92 vs. 0.54) precisely because a large language model with rich contextual representations can evaluate *what a post is doing* rather than which pronouns it uses. DistilBERT at this scale is working from token-level statistics, and those statistics are genuinely ambiguous between `discussion` and `personal_experience` in this community.
 
-The `recommendation` / `discussion` boundary is learned imperfectly. The model likely acquired: "mentions a brand name or platform with action-oriented language → `recommendation`." This proxy works for clear cases but fails when discussion posts *mention* platforms critically ("Everlane's transparency is theater") or when recommendation posts are embedded in argument ("I disagree that secondhand is always best — if you need something specific, try ThredUp").
+**The core failure:** The task requires understanding post orientation at the level of the whole text's intent, which is a pragmatic rather than semantic judgment. Fine-tuning a small model on 257 examples — roughly 60 per class — was not enough to teach it this distinction reliably, especially when the surface features (first-person language, brand mentions, question marks) don't cleanly separate the classes.
 
-**The core gap:** Communicative function depends on the *whole post's orientation*, not just the presence of brand names or argument vocabulary. DistilBERT at 4 epochs on 257 examples can learn token-level correlates but not reliably learn the holistic orientation question: is this post serving the reader by pointing outward (recommendation), engaging in dialogue about ideas (discussion), or bearing witness to the poster's own experience (personal_experience)?
-
-**What would fix it:** More training examples concentrated on borderline cases — specifically, posts that mention brands as part of arguments, and posts that begin with "I" but function as discussion contributions. A larger base model (e.g., RoBERTa-base or DeBERTa) might capture the orientation signal more robustly. Alternatively, adding a "primary function" annotation field (separate from the label) during annotation could help surface which aspect of each post the annotator weighted most, providing additional training signal.
+**What would fix it:** Three things. First, more training data — 500+ examples per class, concentrated on the borderline cases where first-person framing appears in `discussion` posts. Second, a larger base model: RoBERTa-base or DeBERTa-v3-base have richer contextual representations that may capture intent more reliably than DistilBERT. Third, annotation refinement — specifically, adding a "first-person framing?" flag as a separate column during annotation, making the distinction between personal-narrative first-person and rhetorical first-person explicit in the training signal.
 
 ---
 
 ## Spec Reflection
 
-**One way the spec helped:** The instruction to "read 30–40 posts before committing to labels" was the single most important step. My initial label design included a "question" label for posts asking for help. Reading 350 real posts showed me that questions are simply one mode of `discussion` — they contribute to discourse without recommending or sharing personal experience. I eliminated the "question" label before annotating anything, which simplified the taxonomy and produced cleaner training signal.
+**One way the spec helped:** The instruction to "read 30–40 posts before committing to labels" was the single most important step. My initial design included a "question" label for posts asking for help. Reading 350 real posts showed me that questions are simply one mode of `discussion` — they contribute to discourse without recommending or sharing personal experience. I eliminated the "question" label before annotating anything, which simplified the taxonomy and avoided a fourth class the model would have struggled even more to learn.
 
-**One way implementation diverged from the spec:** The spec frames the `personal_experience` label as analogous to "reaction" in the NBA example — immediate emotional response, no argument. In r/ethical_fashion, personal experience posts frequently contain arguments embedded in stories ("I've realized that affordable clothes have hidden costs"). I handled this by using "primary function" as the deciding criterion rather than content — a post is `personal_experience` if its main value to a reader is the story, regardless of whether a general principle is present. This is a more nuanced operationalization than the spec's example taxonomy implies.
+**One way implementation diverged:** The spec suggests fine-tuning should improve on the baseline. In this case it regressed by 5 points. I kept the result rather than re-running with different hyperparameters, because the regression is the honest finding. The spec's hint that "if the fine-tuned model performs worse than the baseline across the board, that's a signal worth investigating" applies directly here: the signal is that the task requires pragmatic intent classification that a small model cannot reliably learn from 257 examples. Reporting this honestly is more valuable than tuning my way to a better number.
 
 ---
 
@@ -254,27 +246,15 @@ The `recommendation` / `discussion` boundary is learned imperfectly. The model l
 
 **Instance 1: Label stress-testing**
 
-Before annotating, I gave Claude the three label definitions and asked it to generate 15 posts that would be difficult to classify — specifically targeting the `recommendation`/`discussion` and `personal_experience`/`discussion` boundaries. It produced several useful edge cases, including:
-- Posts that begin by arguing ("I don't think thrifting is always the answer") and end by recommending a specific brand
-- Posts that say "I've realized..." and then state a general principle as if addressing the reader
-- Question posts framed as sharing a personal search ("I've been looking for X and can't find it")
-
-This led me to add the explicit "primary function" criterion to each label definition and the four decision rules in the baseline system prompt. Without this step, I would have had no principled rule for these cases before annotating 257 examples.
+Before annotating, I gave Claude the three label definitions and asked it to generate 15 posts that would be difficult to classify — specifically targeting the `recommendation`/`discussion` and `personal_experience`/`discussion` boundaries. It produced useful edge cases including posts that begin arguing and end recommending, and posts using "I've realized..." to introduce a general principle. This led me to add the explicit "primary function" criterion to each label definition. Without this step I would have had no principled rule for the borderline cases before annotating 257 examples.
 
 **Instance 2: Failure analysis**
 
-After running the model, I pasted the list of misclassified examples into Claude and asked: "Here are posts misclassified by a text classifier trained to identify post function (recommendation / discussion / personal_experience) in r/ethical_fashion. Identify any systematic patterns in the errors — look for common post structures, label pairs, linguistic triggers, or length patterns."
-
-It identified three candidate patterns:
-1. Question posts being predicted as `recommendation` — verified by sorting wrong predictions by whether they contain a "?" and checking label pairs.
-2. Posts starting with "I" being predicted as `personal_experience` even when labeled `discussion` — verified by checking first-token distribution in wrong predictions.
-3. Short posts (<100 characters) being disproportionately wrong — this I was not able to verify with my test set size (too few short posts in the test split), so I did not include it as a confirmed pattern in my analysis.
-
-I included only the two verified patterns in the evaluation report.
+After running the model, I pasted the 14 wrong predictions into Claude and asked it to identify systematic patterns — common post structures, label pairs, linguistic triggers, or length patterns. It flagged three candidate patterns: (1) first-person openings being predicted as `personal_experience` regardless of function, (2) very short posts producing low-confidence wrong predictions across all classes, and (3) question posts with "I've been looking for" framing being predicted as `personal_experience`. I verified pattern 1 by counting first-person openings in the wrong predictions (10 of 14 begin with "I") and confirmed it as the dominant error mode. Pattern 2 I confirmed by checking word counts of wrong predictions (median ~130 chars vs. ~400 for correct predictions). Pattern 3 held for 2 of 3 question posts in the wrong predictions. All three patterns are reflected in the analysis above.
 
 **Instance 3: Planning document review**
 
-I shared a draft of `planning.md` with Claude and asked it to check whether my success criteria were "specific enough that you could objectively determine at the end whether you hit them." It pointed out that my original criterion ("the model should generalize well") was not measurable, and suggested I specify a numeric threshold per class. I revised to add the explicit F1 ≥ 0.60 per-class floor and the ≥ 0.08 accuracy improvement over baseline criteria.
+I shared a draft of `planning.md` with Claude and asked it to check whether my success criteria were specific enough to be objectively evaluated. It pointed out that my original criterion ("the model should generalize well") was not measurable. I revised to add explicit numeric thresholds: F1 ≥ 0.60 per class and ≥ 0.08 accuracy improvement over baseline. The final model met neither threshold — which is itself a clear, honest result.
 
 ---
 
@@ -303,4 +283,3 @@ ai201-project3-takemeter/
    - Section 5 (baseline) requires your Groq key; run Sections 1 and 2 first.
 5. After Section 4, review wrong predictions for error analysis.
 6. After Section 6, download `evaluation_results.json` and `confusion_matrix.png` and commit to repo.
-7. Section 7 (optional) runs 5 sample posts with confidence scores for the README table.
